@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package shopping;
+
+option go_package = "./shopping";
+
+message Product {
+  string name = 1;
+  int32 quantity = 2;
+  bool purchased = 3;
+}
+
+message void {}
+
+message ProductRequest {
+  string name = 1;
+  int32 quantity = 2;
+}
+
+message ProductNameRequest {
+  string name = 1;
+}
+
+message ProductResponse {
+  string message = 1;
+}
+
+message ProductList {
+  repeated Product products = 1;
+}
+
+service ShoppingService {
+  rpc AddProduct(ProductRequest) returns (ProductResponse);
+  rpc GetProduct(ProductNameRequest) returns (Product);
+  rpc UpdateProduct(ProductRequest) returns (ProductResponse);
+  rpc DeleteProduct(ProductNameRequest) returns (ProductResponse);
+  rpc ListProducts(void) returns (ProductList);
+  rpc MarkAsPurchased(ProductNameRequest) returns (ProductResponse);
+}
