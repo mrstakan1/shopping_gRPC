@@ -1,84 +1,158 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
-	"client/shopping"
+	pb "client/shopping" // Замените на путь к сгенерированным файлам
 	"google.golang.org/grpc"
 )
 
 func main() {
-	conn, err := grpc.Dial("localhost:9090", grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(5*time.Second))
+	conn, err := grpc.Dial("localhost:9090", grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		log.Fatalf("Не удалось подключиться: %v", err)
 	}
 	defer conn.Close()
 
-	client := shopping.NewShoppingServiceClient(conn)
+	client := pb.NewShoppingServiceClient(conn)
 
-	productsToAdd := []shopping.ProductRequest{
-		{Name: "Apples", Quantity: 10},
-		{Name: "Bananas", Quantity: 5},
-		{Name: "Oranges", Quantity: 7},
-	}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Println("\nВыберите операцию:")
+		fmt.Println("1: Добавить продукт")
+		fmt.Println("2: Показать продукт")
+		fmt.Println("3: Обновить продукт")
+		fmt.Println("4: Удалить продукт")
+		fmt.Println("5: Показать список покупок")
+		fmt.Println("6: Отметить продукт как купленный")
+		fmt.Println("0: Выйти")
 
-	for _, product := range productsToAdd {
-		response, err := client.AddProduct(context.Background(), &product)
-		if err != nil {
-			log.Fatalf("Could not add product: %v", err)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		choice, _ := strconv.Atoi(input)
+
+		switch choice {
+		case 1:
+			addProduct(client, reader)
+		case 2:
+			getProduct(client, reader)
+		case 3:
+			updateProduct(client, reader)
+		case 4:
+			deleteProduct(client, reader)
+		case 5:
+			listProducts(client)
+		case 6:
+			markAsPurchased(client, reader)
+		case 0:
+			return
+		default:
+			fmt.Println("Некорректный выбор. Попробуйте снова.")
 		}
-		fmt.Println(response.Message)
 	}
+}
 
-	productList, err := client.ListProducts(context.Background(), &shopping.Void{})
+func addProduct(client pb.ShoppingServiceClient, reader *bufio.Reader) {
+	fmt.Print("Введите название продукта: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+
+	fmt.Print("Введите количество: ")
+	qtyStr, _ := reader.ReadString('\n')
+	qty, _ := strconv.Atoi(strings.TrimSpace(qtyStr))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	res, err := client.AddProduct(ctx, &pb.ProductRequest{Name: name, Quantity: int32(qty)})
 	if err != nil {
-		log.Fatalf("Could not list products: %v", err)
+		log.Fatalf("Ошибка при добавлении продукта: %v", err)
 	}
+	fmt.Printf("Продукт добавлен: %s\n", res.Message)
+}
 
-	fmt.Println("Product List:")
-	for _, p := range productList.Products {
-		fmt.Printf("Name: %s, Quantity: %d, Purchased: %v\n", p.Name, p.Quantity, p.Purchased)
-	}
+func getProduct(client pb.ShoppingServiceClient, reader *bufio.Reader) {
+	fmt.Print("Введите название продукта для получения: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
 
-	updateProduct := &shopping.ProductRequest{Name: "Apples", Quantity: 15}
-	updateResponse, err := client.UpdateProduct(context.Background(), updateProduct)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	res, err := client.GetProduct(ctx, &pb.ProductNameRequest{Name: name})
 	if err != nil {
-		log.Fatalf("Could not update product: %v", err)
+		log.Fatalf("Ошибка при получении продукта: %v", err)
 	}
-	fmt.Println(updateResponse.Message)
+	fmt.Printf("Продукт: %s, Количество: %d, Куплен: %t\n", res.Name, res.Quantity, res.Purchased)
+}
 
-	deleteResponse, err := client.DeleteProduct(context.Background(), &shopping.ProductNameRequest{Name: "Bananas"})
+func updateProduct(client pb.ShoppingServiceClient, reader *bufio.Reader) {
+	fmt.Print("Введите название продукта для обновления: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+
+	fmt.Print("Введите новое количество: ")
+	qtyStr, _ := reader.ReadString('\n')
+	qty, _ := strconv.Atoi(strings.TrimSpace(qtyStr))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	res, err := client.UpdateProduct(ctx, &pb.ProductRequest{Name: name, Quantity: int32(qty)})
 	if err != nil {
-		log.Fatalf("Could not delete product: %v", err)
+		log.Fatalf("Ошибка при обновлении продукта: %v", err)
 	}
-	fmt.Println(deleteResponse.Message)
+	fmt.Printf("Обновление успешно: %s\n", res.Message)
+}
 
-	productList, err = client.ListProducts(context.Background(), &shopping.Void{})
+func deleteProduct(client pb.ShoppingServiceClient, reader *bufio.Reader) {
+	fmt.Print("Введите название продукта для удаления: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	res, err := client.DeleteProduct(ctx, &pb.ProductNameRequest{Name: name})
 	if err != nil {
-		log.Fatalf("Could not list products: %v", err)
+		log.Fatalf("Ошибка при удалении продукта: %v", err)
 	}
+	fmt.Printf("Удаление успешно: %s\n", res.Message)
+}
 
-	fmt.Println("Updated Product List:")
-	for _, p := range productList.Products {
-		fmt.Printf("Name: %s, Quantity: %d, Purchased: %v\n", p.Name, p.Quantity, p.Purchased)
-	}
+func listProducts(client pb.ShoppingServiceClient) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
-	markResponse, err := client.MarkAsPurchased(context.Background(), &shopping.ProductNameRequest{Name: "Oranges"})
+	res, err := client.ListProducts(ctx, &pb.Void{})
 	if err != nil {
-		log.Fatalf("Could not mark product as purchased: %v", err)
+		log.Fatalf("Ошибка при выводе списка продуктов: %v", err)
 	}
-	fmt.Println(markResponse.Message)
 
-	productList, err = client.ListProducts(context.Background(), &shopping.Void{})
+	fmt.Println("Список продуктов:")
+	for _, item := range res.Products {
+		fmt.Printf("Название: %s, Количество: %d, Куплен: %t\n", item.Name, item.Quantity, item.Purchased)
+	}
+}
+
+func markAsPurchased(client pb.ShoppingServiceClient, reader *bufio.Reader) {
+	fmt.Print("Введите название продукта для отметки как купленный: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	res, err := client.MarkAsPurchased(ctx, &pb.ProductNameRequest{Name: name})
 	if err != nil {
-		log.Fatalf("Could not list products: %v", err)
+		log.Fatalf("Ошибка при отметке продукта как купленного: %v", err)
 	}
-
-	fmt.Println("Final Product List:")
-	for _, p := range productList.Products {
-		fmt.Printf("Name: %s, Quantity: %d, Purchased: %v\n", p.Name, p.Quantity, p.Purchased)
-	}
+	fmt.Printf("Продукт успешно отмечен как купленный: %s\n", res.Message)
 }
